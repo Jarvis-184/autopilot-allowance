@@ -77,6 +77,15 @@ Verified end-to-end loop (2026-11-23, all on public explorers):
 6. CRON tick -> autopilot dispatched payout #3 -> callback delivered and `Paid`
    emitted, 0.005 ETH to the plan recipient - destination tx
    [`0x8bd0c8f25445396d9e6ca91a43ee596a5300971d6d65007103e78d49619c2d0f`](https://sepolia.etherscan.io/tx/0x8bd0c8f25445396d9e6ca91a43ee596a5300971d6d65007103e78d49619c2d0f)
+7. Four more consecutive payouts, one per 600s slot:
+   [`0x2349ce37`](https://sepolia.etherscan.io/tx/0x2349ce37e78c06ae239573387f158219461d2e5170ec590ec2be77a6a8df752d),
+   [`0xa59cdc8b`](https://sepolia.etherscan.io/tx/0xa59cdc8b6490553dc17af81656ebb7f10c10c784e3b88fcb9c70fd167f1d3a23),
+   [`0xa841b8bd`](https://sepolia.etherscan.io/tx/0xa841b8bd11216fd7421c6fc3e2250733659bacef833bf6b836d4c6c82d036c97),
+   [`0xce438f49`](https://sepolia.etherscan.io/tx/0xce438f499b9116a66c09661e87d7062fed55db1e109f710e7446e773516ad85c)
+8. `cancelPlan()` - tx [`0xf6ab92f6`](https://sepolia.etherscan.io/tx/0xf6ab92f6edc67940fef6cbb6597f9ebaaaf826301f193dea7323df1e100008b5);
+   the autopilot mirrored the cancellation and dispatches stopped (verified on Lasna),
+   then the remaining vault balance was withdrawn - tx
+   [`0xd8d8f14b`](https://sepolia.etherscan.io/tx/0xd8d8f14b486f1129f91dede7e9b4a9de6f0b0bb2c9b25fa9d54ff9e3ffe2b703) - full hash `0xd8d8f14b486f1129f91dede7e9b4a9de6f0b0bb2c9b25fa9d54ff9e3ffe2b703`
 
 Lesson learned on gas: the callback proxy forwards less gas than the requested
 limit (its own overhead plus billing), so the first two dispatches (200k, 400k)
