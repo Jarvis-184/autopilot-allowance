@@ -12,7 +12,7 @@ Built for the **Reactive Omni Buildathon** - *Set It and Forget It* track.
 ## How it works
 
 ```
-owner (human)                     Reactive Network                    origin chain (Base Sepolia)
+owner (human)                     Reactive Network                    origin chain (Ethereum Sepolia)
      |                                   |                                    |
      | deploy + fund AllowanceVault      |                                    |
      | setPlan(recipient, amount, ...)   |                                    |
@@ -30,7 +30,7 @@ Two contracts:
 | Contract | Chain | Role |
 | --- | --- | --- |
 | `AllowanceAutopilot.sol` | Reactive (Lasna testnet, 5318007) | Subscribes to the vault's `PlanSet`/`PlanCancelled` events and to the network's own `Cron100` events. Every tick it checks whether the mirrored plan is due and requests a callback. |
-| `AllowanceVault.sol` | Origin/destination (Base Sepolia, 84532) | Holds the owner's deposit, stores the plan, and pays out. Payouts are only accepted from the Reactive callback proxy on behalf of the autopilot contract. |
+| `AllowanceVault.sol` | Origin/destination (Ethereum Sepolia, 11155111) | Holds the owner's deposit, stores the plan, and pays out. Payouts are only accepted from the Reactive callback proxy on behalf of the autopilot contract. |
 
 Safety properties:
 
