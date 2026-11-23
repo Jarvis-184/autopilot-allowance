@@ -92,12 +92,31 @@ limit (its own overhead plus billing), so the first two dispatches (200k, 400k)
 failed OutOfGas while still being billed a small fee; 1,000,000 works. Slots
 that failed were simply skipped, as designed, and the next slot paid normally.
 
-## Build
+## Build and test
 
 ```bash
 forge build
-forge test -v
+forge test -v   # 22 tests: replay fuzz (256 cases), slot/plan-version guards, forged-origin rejection
 ```
+
+## How this maps to the track criteria
+
+- **Execution** - the full loop ran on public testnets: 7 dispatches, 5 consecutive
+  successful payouts delivered by the network's own callback proxy, then a clean
+  cancel and withdrawal. Every step has a transaction hash above.
+- **Integration** - the reactive contract does the real work: it mirrors the plan
+  from vault events and decides payouts from network CRON ticks alone. No bot, no
+  server, no keeper wallet anywhere in the loop.
+- **Usefulness** - a personal automation anyone can use: recurring allowance,
+  subscription, or savings transfer. Deposit once, set one plan, walk away.
+- **Craft** - destination-side safety (plan versioning, schedule-slot verification,
+  replay rejection), 22 local tests including a 256-case replay fuzz, honest
+  handling of failed slots, and a live dashboard reading both chains.
+
+## Demo
+
+- Live dashboard (reads both chains from public RPCs): linked in the submission.
+- Demo video: linked in the submission.
 
 ## Track checklist
 
