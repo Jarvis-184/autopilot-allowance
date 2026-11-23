@@ -54,10 +54,34 @@ Safety properties:
   delivery. Cancellation on the vault takes effect immediately for later callbacks;
   it cannot reverse a payment already included on the destination chain.
 
-## Deployed contracts (Lasna testnet + Base Sepolia)
+## Deployed contracts (Lasna testnet + Ethereum Sepolia)
 
-_To be filled in at submission time, with the full event-to-callback loop's
-transaction hashes._
+| Contract | Chain | Address |
+| --- | --- | --- |
+| `AllowanceVault` | Ethereum Sepolia (11155111) | [`0xfCE2AaC5c2B6e83D504AAF9844ed92ABbba91A10`](https://sepolia.etherscan.io/address/0xfCE2AaC5c2B6e83D504AAF9844ed92ABbba91A10) |
+| `AllowanceAutopilot` | Reactive Lasna (5318007) | [`0xafBF77C5587E365712416D6EFF9A40FDF2545F95`](https://lasna.reactscan.net/address/0xafBF77C5587E365712416D6EFF9A40FDF2545F95) |
+
+Deployer: `0x6f59ab1977DF350d1FbBE379EEE6D45AEB766353` (testnet only).
+
+Verified end-to-end loop (2026-11-23, all on public explorers):
+
+1. Sepolia ETH swapped to lREACT via the official faucet contract - tx
+   [`0x6ba839899a2374368d8bd5e95b1aee23cf032105ef173e8155d31550b2463996`](https://sepolia.etherscan.io/tx/0x6ba839899a2374368d8bd5e95b1aee23cf032105ef173e8155d31550b2463996)
+2. Vault deployed - tx [`0xa25c3b2ad7e5e84c2fc50afc6c105579c489f2a17a7263bf56b345ce970bb499`](https://sepolia.etherscan.io/tx/0xa25c3b2ad7e5e84c2fc50afc6c105579c489f2a17a7263bf56b345ce970bb499)
+   (autopilot address pre-committed as the deployer's CREATE address at Lasna nonce 0)
+3. Autopilot deployed with 1.5 lREACT - tx
+   [`0x49131f1a44e73f448cf2e5ef41da00883005275db40055d921e9d524529cede0`](https://lasna.reactscan.net/tx/0x49131f1a44e73f448cf2e5ef41da00883005275db40055d921e9d524529cede0),
+   landed exactly at the pre-committed address `0xafBF77C5587E365712416D6EFF9A40FDF2545F95`
+4. Vault funded with 0.03 Sepolia ETH - tx [`0x84ade922774b5b6bfc6daed23c8b3a7f4bd84536708bbeb3c014b5efe5d94e81`](https://sepolia.etherscan.io/tx/0x84ade922774b5b6bfc6daed23c8b3a7f4bd84536708bbeb3c014b5efe5d94e81)
+5. `setPlan(0.005 ETH / 600s)` - tx [`0x7867c69565178e5fc8a9206a8caa40cd9f6502896ac04429557137e34cd39dd0`](https://sepolia.etherscan.io/tx/0x7867c69565178e5fc8a9206a8caa40cd9f6502896ac04429557137e34cd39dd0)
+6. CRON tick -> autopilot dispatched payout #3 -> callback delivered and `Paid`
+   emitted, 0.005 ETH to the plan recipient - destination tx
+   [`0x8bd0c8f25445396d9e6ca91a43ee596a5300971d6d65007103e78d49619c2d0f`](https://sepolia.etherscan.io/tx/0x8bd0c8f25445396d9e6ca91a43ee596a5300971d6d65007103e78d49619c2d0f)
+
+Lesson learned on gas: the callback proxy forwards less gas than the requested
+limit (its own overhead plus billing), so the first two dispatches (200k, 400k)
+failed OutOfGas while still being billed a small fee; 1,000,000 works. Slots
+that failed were simply skipped, as designed, and the next slot paid normally.
 
 ## Build
 
@@ -70,8 +94,8 @@ forge test -v
 
 - [x] Personal automation anyone can build (deposit, set plan, walk away)
 - [x] Reactive contract doing the real work (CRON subscription + event mirroring + callbacks)
-- [ ] Deployed contract addresses
-- [ ] Transaction hashes showing the full loop (PlanSet -> CRON tick -> callback -> Paid)
+- [x] Deployed contract addresses
+- [x] Transaction hashes showing the full loop (PlanSet -> CRON tick -> callback -> Paid)
 - [ ] Demo video under 3 minutes
 
 ## License
@@ -80,9 +104,9 @@ MIT
 
 ## Development status
 
-Prototype only. Not audited, not suitable for real funds. No live deployment or
-end-to-end cross-chain execution has been verified yet. Testnet funding is still
-pending. Current local suite: 22 tests, including a 256-case replay fuzz test.
+Prototype only. Not audited, not suitable for real funds. Deployed on Lasna
+testnet + Ethereum Sepolia with a verified end-to-end loop (see above). Local
+suite: 22 tests, including a 256-case replay fuzz test.
 System calls are mocked locally; these tests do not prove network integration.
 
 The vault address is fixed at autopilot deployment. Deploy the vault first using
