@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.29;
 
-import { AbstractReactive } from "@reactive/src/base/AbstractReactive.sol";
-import { ISystemContract } from "@reactive/src/interfaces/ISystemContract.sol";
-import { IReactive } from "@reactive/src/interfaces/IReactive.sol";
+import {AbstractReactive} from "@reactive/src/base/AbstractReactive.sol";
+import {ISystemContract} from "@reactive/src/interfaces/ISystemContract.sol";
+import {IReactive} from "@reactive/src/interfaces/IReactive.sol";
 
-/// @title AllowanceAutopilot — the reactive half of a personal allowance plan.
+/// @title AllowanceAutopilot: the reactive half of a personal allowance plan.
 /// @notice Lives on Reactive Network (Lasna testnet). It mirrors the plan the
 ///         owner sets on AllowanceVault by listening to that vault's events on
 ///         the origin chain, then uses the network's own CRON events to fire a
@@ -19,7 +19,9 @@ contract AllowanceAutopilot is AbstractReactive {
 
     address public owner;
     uint256 public originChainId;
-    address public vault;
+    address public immutable vault;
+    uint256 public planId;
+    bool public paused;
 
     // The mirrored plan, learned from the vault's PlanSet / PlanCancelled events.
     address public recipient;
@@ -44,25 +46,28 @@ contract AllowanceAutopilot is AbstractReactive {
     /// @param vault_ Deployed AllowanceVault address. Fund this contract at
     ///        deployment: every CRON tick and every callback is billed to it.
     constructor(uint256 originChainId_, address vault_) payable {
+        require(originChainId_ != 0 && vault_ != address(0), "AllowanceAutopilot: invalid origin");
         owner = msg.sender;
         originChainId = originChainId_;
         vault = vault_;
 
-        uint256 planSetTopic = uint256(keccak256("PlanSet(address,uint256,uint256,uint256)"));
-        uint256 planCancelledTopic = uint256(keccak256("PlanCancelled(address)"));
+        uint256 planSetTopic = uint256(keccak256("PlanSet(uint256,address,uint256,uint256,uint256)"));
+        uint256 planCancelledTopic = uint256(keccak256("PlanCancelled(uint256)"));
 
-        SYSTEM.subscribe(block.chainid, LEGACY_SYSTEM, CRON100_TOPIC_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        SYSTEM.subscribe(
+            block.chainid, LEGACY_SYSTEM, CRON100_TOPIC_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
         SYSTEM.subscribe(originChainId_, vault_, planSetTopic, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
         SYSTEM.subscribe(originChainId_, vault_, planCancelledTopic, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
     }
 
     /// @inheritdoc IReactive
     function react(LogRecord memory log_) external onlySystem {
-        uint256 planSetTopic = uint256(keccak256("PlanSet(address,uint256,uint256,uint256)"));
-        uint256 planCancelledTopic = uint256(keccak256("PlanCancelled(address)"));
+        uint256 planSetTopic = uint256(keccak256("PlanSet(uint256,address,uint256,uint256,uint256)"));
+        uint256 planCancelledTopic = uint256(keccak256("PlanCancelled(uint256)"));
 
-        if (log_.topic0 == CRON100_TOPIC_0) {
-            if (active && block.timestamp >= nextDue) {
+        if (log_.topic0 == CRON100_TOPIC_0 && log_.chainId == block.chainid && log_.contractAddress == LEGACY_SYSTEM) {
+            if (!paused && active && block.timestamp >= nextDue) {
                 nextDue += intervalSeconds;
                 payoutsFired += 1;
                 SYSTEM.requestCallbackV_1_0(
@@ -72,27 +77,29 @@ contract AllowanceAutopilot is AbstractReactive {
                         gasLimit: callbackGasLimit,
                         // The network injects this contract's address as the
                         // first argument for authentication on the vault side.
-                        payload: abi.encodeWithSignature("pay(address)", address(0))
+                        payload: abi.encodeWithSignature(
+                            "pay(address,uint256,uint256)", address(0), planId, nextDue - intervalSeconds
+                        )
                     })
                 );
                 emit PayoutDispatched(payoutsFired, recipient, amount, nextDue - intervalSeconds);
             }
-        } else if (log_.topic0 == planSetTopic && log_.contractAddress == vault) {
-            recipient = address(uint160(log_.topic1));
+        } else if (
+            log_.topic0 == planSetTopic && log_.chainId == originChainId && log_.contractAddress == vault
+                && log_.topic1 > planId
+        ) {
+            planId = log_.topic1;
+            recipient = address(uint160(log_.topic2));
             (amount, intervalSeconds, nextDue) = abi.decode(log_.data, (uint256, uint256, uint256));
             active = true;
             emit PlanMirrored(recipient, amount, intervalSeconds, nextDue);
-        } else if (log_.topic0 == planCancelledTopic && log_.contractAddress == vault) {
+        } else if (
+            log_.topic0 == planCancelledTopic && log_.chainId == originChainId && log_.contractAddress == vault
+                && log_.topic1 == planId
+        ) {
             active = false;
             emit PlanStopped();
         }
-    }
-
-    /// @notice Point at a different vault (e.g. after redeploying it).
-    function setVault(uint256 originChainId_, address vault_) external onlyOwner {
-        originChainId = originChainId_;
-        vault = vault_;
-        active = false;
     }
 
     /// @notice Tune the gas handed to each payout callback.
@@ -102,17 +109,25 @@ contract AllowanceAutopilot is AbstractReactive {
 
     /// @notice Stop the meter: unsubscribe from CRON so ticks stop billing.
     function pause() external onlyOwner {
-        SYSTEM.unsubscribe(block.chainid, LEGACY_SYSTEM, CRON100_TOPIC_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        require(!paused, "AllowanceAutopilot: already paused");
+        paused = true;
+        SYSTEM.unsubscribe(
+            block.chainid, LEGACY_SYSTEM, CRON100_TOPIC_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
     }
 
     /// @notice Resume CRON billing after a pause.
     function resume() external onlyOwner {
-        SYSTEM.subscribe(block.chainid, LEGACY_SYSTEM, CRON100_TOPIC_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE);
+        require(paused, "AllowanceAutopilot: not paused");
+        paused = false;
+        SYSTEM.subscribe(
+            block.chainid, LEGACY_SYSTEM, CRON100_TOPIC_0, REACTIVE_IGNORE, REACTIVE_IGNORE, REACTIVE_IGNORE
+        );
     }
 
     /// @notice Recover unused funding.
     function withdraw(uint256 amount_) external onlyOwner {
-        (bool ok, ) = owner.call{ value: amount_ }("");
+        (bool ok,) = owner.call{value: amount_}("");
         require(ok, "AllowanceAutopilot: withdraw failed");
     }
 }
